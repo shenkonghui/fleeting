@@ -1,6 +1,7 @@
 let currentMonth = null // 'YYYY-MM'，null = 当前月
 let searchQuery = ''   // 当前搜索词
 let allTags = []       // 从 config.yaml 加载的全量标签
+let activeTag = ''     // 当前侧边栏选中的标签
 
 // ── 工具 ──────────────────────────────────────────────
 function currentYearMonth() {
@@ -13,6 +14,38 @@ function renderMarkdown(text) {
   const withTags = text.replace(/(^|\s)(#\S+)/g, (_, pre, tag) =>
     `${pre}<span class="tag-badge">${tag}</span>`)
   return marked.parse(withTags)
+}
+
+// ── 渲染侧边栏标签列表 ─────────────────────────────────
+function renderTagList() {
+  const nav = document.getElementById('tag-list')
+  const label = document.getElementById('tag-section-label')
+  nav.innerHTML = ''
+  label.style.display = allTags.length ? 'block' : 'none'
+  allTags.forEach(tag => {
+    const item = document.createElement('div')
+    item.className = 'tag-item' + (activeTag === tag ? ' active' : '')
+    item.textContent = `#${tag}`
+    item.addEventListener('click', () => filterByTag(tag))
+    nav.appendChild(item)
+  })
+}
+
+function filterByTag(tag) {
+  if (activeTag === tag) {
+    // 再次点击取消过滤
+    activeTag = ''
+    searchQuery = ''
+    document.getElementById('search-input').value = ''
+    document.getElementById('search-clear').style.display = 'none'
+  } else {
+    activeTag = tag
+    searchQuery = `#${tag}`
+    document.getElementById('search-input').value = `#${tag}`
+    document.getElementById('search-clear').style.display = 'flex'
+  }
+  renderTagList()
+  loadMemos()
 }
 
 // ── 渲染月份列表 ───────────────────────────────────────
@@ -79,7 +112,12 @@ function createCard(memo, ym) {
 
 // ── 切换月份 ───────────────────────────────────────────
 async function switchMonth(m) {
+  activeTag = ''
+  searchQuery = ''
+  document.getElementById('search-input').value = ''
+  document.getElementById('search-clear').style.display = 'none'
   currentMonth = (m === currentYearMonth()) ? null : m
+  renderTagList()
   await loadMonths()
   await loadMemos()
 }
@@ -95,6 +133,7 @@ async function submitMemo() {
   await window.api.addMemo(content)
   // 发送后重新加载标签（可能新增了标签）
   allTags = await window.api.getTags()
+  renderTagList()
   editor.value = ''
   editor.style.height = 'auto'
   await loadMonths()
@@ -206,15 +245,19 @@ document.getElementById('search-input').addEventListener('input', e => {
   clearTimeout(searchTimer)
   searchTimer = setTimeout(async () => {
     searchQuery = e.target.value.trim()
+    activeTag = ''
+    renderTagList()
     document.getElementById('search-clear').style.display = searchQuery ? 'flex' : 'none'
     await loadMemos()
   }, 200)
 })
 
 document.getElementById('search-clear').addEventListener('click', async () => {
+  activeTag = ''
   searchQuery = ''
   document.getElementById('search-input').value = ''
   document.getElementById('search-clear').style.display = 'none'
+  renderTagList()
   await loadMemos()
 })
 
@@ -232,6 +275,7 @@ document.getElementById('memo-list').addEventListener('click', e => {
 // ── 初始化 ────────────────────────────────────────────
 ;(async () => {
   allTags = await window.api.getTags()
+  renderTagList()
   await loadMonths()
   await loadMemos()
 })()

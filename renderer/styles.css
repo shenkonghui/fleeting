@@ -47,7 +47,7 @@ body {
 }
 
 #month-list {
-  flex: 1;
+  max-height: 40%;
   overflow-y: auto;
   -webkit-app-region: no-drag;
 }
@@ -63,6 +63,35 @@ body {
 }
 .month-item:hover { background: var(--bg); color: var(--text); }
 .month-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+
+.sidebar-section-label {
+  padding: 10px 18px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+#tag-list {
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+}
+
+.tag-item {
+  padding: 7px 18px;
+  cursor: pointer;
+  border-radius: 6px;
+  margin: 2px 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  transition: background .15s, color .15s;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tag-item:hover { background: var(--bg); color: var(--accent); }
+.tag-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
 
 #open-dir-btn {
   margin: 10px 10px 4px;
