@@ -6,5 +6,6 @@ contextBridge.exposeInMainWorld('api', {
   addMemo:        (content)   => ipcRenderer.invoke('add-memo', content),
   deleteMemo:     (info)      => ipcRenderer.invoke('delete-memo', info),
   searchMemos:    (query)     => ipcRenderer.invoke('search-memos', query),
+  getTags:        ()          => ipcRenderer.invoke('get-tags'),
   openStorageDir: ()          => ipcRenderer.invoke('open-storage-dir'),
 })

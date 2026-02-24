@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, shell } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
+const yaml = require('js-yaml')
 
 const STORAGE_DIR = path.join(os.homedir(), 'Documents', 'fleeting')
 
@@ -60,6 +61,33 @@ ipcMain.handle('get-months', () => {
     .reverse()
 })
 
+// ── YAML 配置：标签管理 ───────────────────────────────
+const CONFIG_FILE = path.join(STORAGE_DIR, 'config.yaml')
+
+function readConfig() {
+  if (!fs.existsSync(CONFIG_FILE)) return { tags: [] }
+  return yaml.load(fs.readFileSync(CONFIG_FILE, 'utf-8')) || { tags: [] }
+}
+
+function saveConfig(cfg) {
+  fs.writeFileSync(CONFIG_FILE, yaml.dump(cfg), 'utf-8')
+}
+
+function syncTags(content) {
+  const found = (content.match(/#(\S+)/g) || []).map(t => t.slice(1))
+  if (!found.length) return
+  const cfg = readConfig()
+  const set = new Set(cfg.tags || [])
+  found.forEach(t => set.add(t))
+  cfg.tags = [...set].sort()
+  saveConfig(cfg)
+}
+
+ipcMain.handle('get-tags', () => {
+  ensureDir()
+  return readConfig().tags || []
+})
+
 // 添加新 memo
 ipcMain.handle('add-memo', (_, content) => {
   ensureDir()
@@ -67,6 +95,7 @@ ipcMain.handle('add-memo', (_, content) => {
   const ts = formatTimestamp()
   const block = `## ${ts}\n${content}\n---\n`
   fs.appendFileSync(file, block, 'utf-8')
+  syncTags(content)
   return { timestamp: ts, content }
 })
 

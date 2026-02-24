@@ -1,5 +1,6 @@
 let currentMonth = null // 'YYYY-MM'，null = 当前月
 let searchQuery = ''   // 当前搜索词
+let allTags = []       // 从 config.yaml 加载的全量标签
 
 // ── 工具 ──────────────────────────────────────────────
 function currentYearMonth() {
@@ -89,28 +90,112 @@ async function submitMemo() {
   const content = editor.value.trim()
   if (!content) return
 
-  // 若当前不在本月视图，切换回本月
+  hideTagDropdown()
   currentMonth = null
   await window.api.addMemo(content)
+  // 发送后重新加载标签（可能新增了标签）
+  allTags = await window.api.getTags()
   editor.value = ''
   editor.style.height = 'auto'
   await loadMonths()
   await loadMemos()
 }
 
+// ── 标签自动补全 ───────────────────────────────────────
+const dropdown = document.getElementById('tag-dropdown')
+let acIndex = -1   // 当前高亮项
+
+function getTagContext(textarea) {
+  const text = textarea.value.slice(0, textarea.selectionStart)
+  const m = text.match(/(^|\s)#(\S*)$/)
+  return m ? m[2] : null // 返回 # 后的已输入部分，无匹配返回 null
+}
+
+function showTagDropdown(matches) {
+  acIndex = -1
+  dropdown.innerHTML = ''
+  matches.forEach((tag, i) => {
+    const item = document.createElement('div')
+    item.className = 'tag-ac-item'
+    item.textContent = `#${tag}`
+    item.addEventListener('mousedown', e => {
+      e.preventDefault() // 防止 textarea 失焦
+      applyTag(tag)
+    })
+    dropdown.appendChild(item)
+  })
+  dropdown.style.display = 'block'
+}
+
+function hideTagDropdown() {
+  dropdown.style.display = 'none'
+  acIndex = -1
+}
+
+function setActiveItem(idx) {
+  const items = dropdown.querySelectorAll('.tag-ac-item')
+  items.forEach((el, i) => el.classList.toggle('active', i === idx))
+}
+
+function applyTag(tag) {
+  const editor = document.getElementById('editor')
+  const before = editor.value.slice(0, editor.selectionStart)
+  const after = editor.value.slice(editor.selectionStart)
+  const replaced = before.replace(/(^|\s)#\S*$/, (_, pre) => `${pre}#${tag} `)
+  editor.value = replaced + after
+  editor.selectionStart = editor.selectionEnd = replaced.length
+  hideTagDropdown()
+  editor.focus()
+}
+
 // ── 事件绑定 ───────────────────────────────────────────
 document.getElementById('submit-btn').addEventListener('click', submitMemo)
 
 document.getElementById('editor').addEventListener('keydown', e => {
+  const isOpen = dropdown.style.display === 'block'
+  const items = dropdown.querySelectorAll('.tag-ac-item')
+
+  if (isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+    e.preventDefault()
+    acIndex = e.key === 'ArrowDown'
+      ? Math.min(acIndex + 1, items.length - 1)
+      : Math.max(acIndex - 1, 0)
+    setActiveItem(acIndex)
+    return
+  }
+
+  if (isOpen && (e.key === 'Enter' || e.key === 'Tab')) {
+    if (acIndex >= 0 && items[acIndex]) {
+      e.preventDefault()
+      applyTag(items[acIndex].textContent.slice(1)) // 去掉前缀 #
+      return
+    }
+  }
+
+  if (isOpen && e.key === 'Escape') {
+    hideTagDropdown()
+    return
+  }
+
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     e.preventDefault()
     submitMemo()
+    return
   }
+
   // 自动撑高 textarea
   setTimeout(() => {
     e.target.style.height = 'auto'
     e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px'
   }, 0)
+})
+
+document.getElementById('editor').addEventListener('input', e => {
+  const partial = getTagContext(e.target)
+  if (partial === null) { hideTagDropdown(); return }
+  const matches = allTags.filter(t => t.toLowerCase().startsWith(partial.toLowerCase()))
+  if (matches.length) showTagDropdown(matches)
+  else hideTagDropdown()
 })
 
 document.getElementById('open-dir-btn').addEventListener('click', () => window.api.openStorageDir())
@@ -146,6 +231,7 @@ document.getElementById('memo-list').addEventListener('click', e => {
 
 // ── 初始化 ────────────────────────────────────────────
 ;(async () => {
+  allTags = await window.api.getTags()
   await loadMonths()
   await loadMemos()
 })()
