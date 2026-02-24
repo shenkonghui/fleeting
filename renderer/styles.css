@@ -87,14 +87,57 @@ body {
   overflow: hidden;
 }
 
+/* ── 顶部栏（月份标签 + 搜索框）── */
+#topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--card-bg);
+  gap: 12px;
+}
+
 #current-month-label {
-  padding: 14px 24px 8px;
   font-size: 13px;
   color: var(--text-muted);
   font-weight: 500;
-  border-bottom: 1px solid var(--border);
-  background: var(--card-bg);
+  white-space: nowrap;
 }
+
+#search-wrap {
+  display: flex;
+  align-items: center;
+  border: 1.5px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 10px;
+  gap: 6px;
+  background: var(--bg);
+  transition: border-color .2s;
+}
+#search-wrap:focus-within { border-color: var(--accent); }
+
+#search-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13px;
+  color: var(--text);
+  width: 180px;
+}
+#search-input::placeholder { color: var(--text-muted); }
+
+#search-clear {
+  display: none;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 0;
+  align-items: center;
+}
+#search-clear:hover { color: var(--text); }
 
 #memo-list {
   flex: 1;
@@ -148,6 +191,30 @@ body {
 .memo-body ul,ol { padding-left: 20px; }
 .memo-body blockquote { border-left: 3px solid var(--accent); padding-left: 10px; color: var(--text-muted); margin: 4px 0; }
 .memo-body a { color: var(--accent); }
+
+/* #标签 badge */
+.tag-badge {
+  display: inline-block;
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 0 5px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s;
+}
+.tag-badge:hover { background: #d8d0ff; }
+
+/* 搜索结果中显示月份 */
+.memo-month {
+  margin-left: 8px;
+  background: var(--accent-light);
+  color: var(--accent);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 11px;
+}
 
 .empty-tip {
   text-align: center;

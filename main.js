@@ -83,6 +83,29 @@ ipcMain.handle('delete-memo', (_, { yearMonth, timestamp }) => {
   return true
 })
 
+// 跨所有月份搜索（返回带 yearMonth 字段的 memo 列表）
+ipcMain.handle('search-memos', (_, query) => {
+  ensureDir()
+  const files = fs.readdirSync(STORAGE_DIR).filter(f => /^\d{4}-\d{2}\.md$/.test(f)).sort().reverse()
+  const q = (query || '').toLowerCase()
+  const tags = (q.match(/#\S+/g) || []).map(t => t.slice(1))        // ['tag1','tag2']
+  const words = q.replace(/#\S+/g, '').trim().split(/\s+/).filter(Boolean) // 普通词
+
+  const results = []
+  for (const file of files) {
+    const ym = file.replace('.md', '')
+    const content = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8')
+    parseMemos(content).forEach(memo => {
+      const lower = memo.content.toLowerCase()
+      const memoTags = (memo.content.match(/#\S+/g) || []).map(t => t.slice(1).toLowerCase())
+      const tagMatch = tags.every(t => memoTags.includes(t))
+      const wordMatch = words.every(w => lower.includes(w))
+      if (tagMatch && wordMatch) results.push({ ...memo, yearMonth: ym })
+    })
+  }
+  return results
+})
+
 // 打开存储目录
 ipcMain.handle('open-storage-dir', () => shell.openPath(STORAGE_DIR))
 
