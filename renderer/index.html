@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Fleeting</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 左侧侧边栏 -->
+    <aside id="sidebar">
+      <div class="sidebar-header">
+        <span class="logo">📝 Fleeting</span>
+      </div>
+      <nav id="month-list"></nav>
+      <button id="open-dir-btn" title="打开存储目录">📂 打开存储目录</button>
+    </aside>
+
+    <!-- 右侧主区域 -->
+    <main id="main">
+      <div id="current-month-label"></div>
+
+      <!-- memo 列表 -->
+      <div id="memo-list"></div>
+
+      <!-- 输入区域固定在底部 -->
+      <div id="input-area">
+        <div id="editor-wrap">
+          <textarea id="editor" placeholder="写点什么… (Ctrl+Enter 发送，支持 Markdown)" rows="3"></textarea>
+          <div id="editor-toolbar">
+            <span class="hint">Ctrl+Enter 发送</span>
+            <button id="submit-btn">发送</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script src="../node_modules/marked/marked.min.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "fleeting",
+  "version": "1.0.0",
+  "description": "轻量桌面备忘录，基于 Markdown 存储",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "marked": "^12.0.0"
+  },
+  "devDependencies": {
+    "electron": "^29.0.0"
+  }
+}
