@@ -85,7 +85,21 @@ function syncTags(content) {
 
 ipcMain.handle('get-tags', () => {
   ensureDir()
-  return readConfig().tags || []
+  const cfg = readConfig()
+  // 首次使用：扫描所有 md 文件补充标签
+  if (!cfg.tags || cfg.tags.length === 0) {
+    const files = fs.readdirSync(STORAGE_DIR).filter(f => /^\d{4}-\d{2}\.md$/.test(f))
+    const set = new Set()
+    for (const file of files) {
+      const content = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8')
+      ;(content.match(/#(\S+)/g) || []).forEach(t => set.add(t.slice(1)))
+    }
+    if (set.size > 0) {
+      cfg.tags = [...set].sort()
+      saveConfig(cfg)
+    }
+  }
+  return cfg.tags || []
 })
 
 // 添加新 memo

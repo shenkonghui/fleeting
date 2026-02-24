@@ -225,16 +225,18 @@ body {
 }
 
 /* ── 标签自动补全下拉 ── */
+#input-area { position: relative; }
+
 #tag-dropdown {
   display: none;
   position: absolute;
-  bottom: calc(100% + 4px); /* 相对 #main 定位，弹在输入框上方 */
-  left: 24px;
-  right: 24px;
+  bottom: 100%;
+  left: 0;
+  right: 0;
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  box-shadow: 0 4px 16px rgba(0,0,0,.10);
+  box-shadow: 0 -4px 16px rgba(0,0,0,.10);
   z-index: 100;
   max-height: 200px;
   overflow-y: auto;
