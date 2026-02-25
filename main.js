@@ -1,10 +1,23 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const os = require('os')
 const yaml = require('js-yaml')
 
-const STORAGE_DIR = path.join(os.homedir(), 'Documents', 'fleeting')
+const GLOBAL_CONFIG_FILE = path.join(os.homedir(), '.fleeting.json')
+function getGlobalConfig() {
+  if (fs.existsSync(GLOBAL_CONFIG_FILE)) {
+    try {
+      return JSON.parse(fs.readFileSync(GLOBAL_CONFIG_FILE, 'utf-8'))
+    } catch(e){}
+  }
+  return { storageDir: path.join(os.homedir(), 'Documents', 'fleeting') }
+}
+function saveGlobalConfig(cfg) {
+  fs.writeFileSync(GLOBAL_CONFIG_FILE, JSON.stringify(cfg, null, 2), 'utf-8')
+}
+
+let STORAGE_DIR = getGlobalConfig().storageDir
 
 function ensureDir() {
   if (!fs.existsSync(STORAGE_DIR)) fs.mkdirSync(STORAGE_DIR, { recursive: true })
@@ -62,15 +75,18 @@ ipcMain.handle('get-months', () => {
 })
 
 // ── YAML 配置：标签管理 ───────────────────────────────
-const CONFIG_FILE = path.join(STORAGE_DIR, 'config.yaml')
+function getConfigFilePath() {
+  return path.join(STORAGE_DIR, 'config.yaml')
+}
 
 function readConfig() {
-  if (!fs.existsSync(CONFIG_FILE)) return { tags: [] }
-  return yaml.load(fs.readFileSync(CONFIG_FILE, 'utf-8')) || { tags: [] }
+  const file = getConfigFilePath()
+  if (!fs.existsSync(file)) return { tags: [] }
+  return yaml.load(fs.readFileSync(file, 'utf-8')) || { tags: [] }
 }
 
 function saveConfig(cfg) {
-  fs.writeFileSync(CONFIG_FILE, yaml.dump(cfg), 'utf-8')
+  fs.writeFileSync(getConfigFilePath(), yaml.dump(cfg), 'utf-8')
 }
 
 function syncTags(content) {
@@ -147,6 +163,70 @@ ipcMain.handle('search-memos', (_, query) => {
     })
   }
   return results
+})
+
+// 编辑 memo（保存旧版本到历史记录）
+ipcMain.handle('edit-memo', (_, { yearMonth, timestamp, newContent }) => {
+  const file = yearMonth ? path.join(STORAGE_DIR, `${yearMonth}.md`) : getMonthFile()
+  if (!fs.existsSync(file)) return false
+  const text = fs.readFileSync(file, 'utf-8')
+  let oldContent = null
+  const updated = text.split(/\n---\n/).map(b => {
+    if (!b.includes(`## ${timestamp}`)) return b
+    oldContent = b.trim().replace(/^## [^\n]+\n/, '').trim()
+    return `## ${timestamp}\n${newContent}`
+  })
+  if (oldContent !== null) {
+    const cfg = readConfig()
+    cfg.history = cfg.history || {}
+    cfg.history[timestamp] = cfg.history[timestamp] || []
+    cfg.history[timestamp].unshift({ editedAt: formatTimestamp(), content: oldContent })
+    if (cfg.history[timestamp].length > 10) cfg.history[timestamp].pop()
+    saveConfig(cfg)
+  }
+  fs.writeFileSync(file, updated.join('\n---\n'), 'utf-8')
+  syncTags(newContent)
+  return true
+})
+
+// 获取 memo 编辑历史
+ipcMain.handle('get-history', (_, timestamp) => {
+  const cfg = readConfig()
+  return (cfg.history && cfg.history[timestamp]) || []
+})
+
+// ── 全局配置：支持修改数据目录 ────────────────────────────
+ipcMain.handle('get-global-config', () => {
+  return getGlobalConfig()
+})
+
+ipcMain.handle('set-global-config', (_, cfg) => {
+  if (cfg.storageDir) {
+    STORAGE_DIR = cfg.storageDir
+    ensureDir()
+  }
+  saveGlobalConfig(cfg)
+  return true
+})
+
+ipcMain.handle('select-directory', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory']
+  })
+  if (!result.canceled && result.filePaths.length > 0) {
+    return result.filePaths[0]
+  }
+  return null
+})
+
+// 保存剪贴板图片到 .image 目录
+ipcMain.handle('save-image', (_, { data, ext }) => {
+  const imgDir = path.join(STORAGE_DIR, '.image')
+  if (!fs.existsSync(imgDir)) fs.mkdirSync(imgDir, { recursive: true })
+  const filename = formatTimestamp().replace(/[: ]/g, '-') + '.' + ext
+  const filepath = path.join(imgDir, filename)
+  fs.writeFileSync(filepath, Buffer.from(data, 'base64'))
+  return filepath
 })
 
 // 打开存储目录

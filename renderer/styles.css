@@ -93,8 +93,8 @@ body {
 .tag-item:hover { background: var(--bg); color: var(--accent); }
 .tag-item.active { background: var(--accent-light); color: var(--accent); font-weight: 600; }
 
-#open-dir-btn {
-  margin: 10px 10px 4px;
+#open-dir-btn, #settings-btn {
+  margin: 4px 10px;
   padding: 7px 10px;
   font-size: 12px;
   border: 1px solid var(--border);
@@ -106,7 +106,8 @@ body {
   transition: background .15s;
   -webkit-app-region: no-drag;
 }
-#open-dir-btn:hover { background: var(--bg); }
+#open-dir-btn { margin-top: auto; } /* Let flex:1 push it down */
+#open-dir-btn:hover, #settings-btn:hover { background: var(--bg); }
 
 /* ── 主区域 ── */
 #main {
@@ -199,7 +200,9 @@ body {
   justify-content: space-between;
 }
 
-.memo-delete {
+.memo-actions { display: flex; gap: 2px; }
+
+.memo-edit, .memo-delete {
   opacity: 0;
   border: none;
   background: none;
@@ -209,8 +212,45 @@ body {
   transition: opacity .2s, color .15s;
   padding: 0 2px;
 }
+.memo-card:hover .memo-edit,
 .memo-card:hover .memo-delete { opacity: 1; }
 .memo-delete:hover { color: #e55; }
+.memo-edit:hover { color: var(--accent); }
+
+.edit-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--accent);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  line-height: 1.6;
+  resize: vertical;
+  outline: none;
+  color: var(--text);
+}
+
+.edit-actions { display: flex; gap: 8px; margin-top: 8px; }
+
+.edit-save, .edit-cancel {
+  padding: 4px 14px;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  cursor: pointer;
+  font-weight: 500;
+}
+.edit-save { background: var(--accent); color: #fff; }
+.edit-save:hover { opacity: .88; }
+.edit-cancel { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+.edit-cancel:hover { color: var(--text); }
+
+.edit-history { margin-top: 12px; border-top: 1px solid var(--border); padding-top: 8px; }
+.history-title { font-size: 11px; color: var(--text-muted); font-weight: 600; margin-bottom: 6px; text-transform: uppercase; letter-spacing: .05em; }
+.history-item { margin-bottom: 8px; }
+.history-time { font-size: 11px; color: var(--text-muted); }
+.history-item pre { font-size: 12px; color: var(--text-muted); white-space: pre-wrap; word-break: break-word; margin-top: 2px; background: var(--bg); padding: 6px 8px; border-radius: 4px; }
 
 .memo-body { font-size: 14px; line-height: 1.7; word-break: break-word; }
 .memo-body p { margin: 0 0 6px; }
@@ -339,3 +379,105 @@ body {
 /* 滚动条美化 */
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }
+
+/* ── 设置弹窗 ── */
+.modal-overlay {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.4);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(2px);
+}
+
+.modal-content {
+  background: var(--card-bg);
+  width: 400px;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  padding: 24px;
+}
+
+.modal-content h3 {
+  margin: 0 0 20px;
+  font-size: 16px;
+  color: var(--text);
+}
+
+.setting-item {
+  margin-bottom: 24px;
+}
+
+.setting-item label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  color: var(--text);
+}
+
+.input-group {
+  display: flex;
+  gap: 8px;
+}
+
+.input-group input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+  background: var(--bg);
+  color: var(--text);
+}
+
+#browse-dir-btn {
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  transition: background .15s;
+}
+
+#browse-dir-btn:hover { background: var(--bg); }
+
+.setting-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.modal-actions button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+
+.btn-cancel {
+  background: transparent;
+  border: 1px solid var(--border) !important;
+  color: var(--text-muted);
+}
+.btn-cancel:hover { background: var(--bg); color: var(--text); }
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+.btn-primary:hover { opacity: .88; }

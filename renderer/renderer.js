@@ -97,7 +97,10 @@ function createCard(memo, ym) {
   card.innerHTML = `
     <div class="memo-meta">
       <span>${memo.timestamp}${label}</span>
-      <button class="memo-delete" title="删除">🗑</button>
+      <span class="memo-actions">
+        <button class="memo-edit" title="编辑">✏️</button>
+        <button class="memo-delete" title="删除">🗑</button>
+      </span>
     </div>
     <div class="memo-body">${renderMarkdown(memo.content)}</div>
   `
@@ -106,6 +109,30 @@ function createCard(memo, ym) {
     await window.api.deleteMemo({ yearMonth: ym, timestamp: memo.timestamp })
     await loadMemos()
     await loadMonths()
+  })
+  card.querySelector('.memo-edit').addEventListener('click', async () => {
+    const body = card.querySelector('.memo-body')
+    const histories = await window.api.getHistory(memo.timestamp)
+    const histHtml = histories.length
+      ? `<div class="edit-history"><div class="history-title">编辑历史</div>${histories.map(h =>
+          `<div class="history-item"><span class="history-time">${h.editedAt}</span><pre>${h.content}</pre></div>`
+        ).join('')}</div>`
+      : ''
+    body.innerHTML = `
+      <textarea class="edit-textarea">${memo.content}</textarea>
+      <div class="edit-actions">
+        <button class="edit-save">保存</button>
+        <button class="edit-cancel">取消</button>
+      </div>${histHtml}`
+    body.querySelector('.edit-save').addEventListener('click', async () => {
+      const newContent = body.querySelector('.edit-textarea').value.trim()
+      if (!newContent) return
+      await window.api.editMemo({ yearMonth: ym, timestamp: memo.timestamp, newContent })
+      await loadMemos()
+    })
+    body.querySelector('.edit-cancel').addEventListener('click', () => {
+      body.innerHTML = renderMarkdown(memo.content)
+    })
   })
   return card
 }
@@ -190,6 +217,24 @@ function applyTag(tag) {
 // ── 事件绑定 ───────────────────────────────────────────
 document.getElementById('submit-btn').addEventListener('click', submitMemo)
 
+// ── 粘贴图片 ───────────────────────────────────────────
+document.getElementById('editor').addEventListener('paste', async e => {
+  const imgItem = Array.from(e.clipboardData.items).find(it => it.type.startsWith('image/'))
+  if (!imgItem) return
+  e.preventDefault()
+  const ext = imgItem.type.split('/')[1].replace('jpeg', 'jpg') || 'png'
+  const reader = new FileReader()
+  reader.onload = async () => {
+    const filepath = await window.api.saveImage({ data: reader.result.split(',')[1], ext })
+    const editor = document.getElementById('editor')
+    const pos = editor.selectionStart
+    const insert = `![](file://${filepath})`
+    editor.value = editor.value.slice(0, pos) + insert + editor.value.slice(pos)
+    editor.selectionStart = editor.selectionEnd = pos + insert.length
+  }
+  reader.readAsDataURL(imgItem.getAsFile())
+})
+
 document.getElementById('editor').addEventListener('keydown', e => {
   const isOpen = dropdown.style.display === 'block'
   const items = dropdown.querySelectorAll('.tag-ac-item')
@@ -270,6 +315,37 @@ document.getElementById('memo-list').addEventListener('click', e => {
     document.getElementById('search-clear').style.display = 'flex'
     loadMemos()
   }
+})
+
+// ── 设置 ──────────────────────────────────────────────
+const settingsModal = document.getElementById('settings-modal')
+const storageInput = document.getElementById('storage-dir-input')
+
+document.getElementById('settings-btn').addEventListener('click', async () => {
+  const config = await window.api.getGlobalConfig()
+  storageInput.value = config.storageDir
+  settingsModal.style.display = 'flex'
+})
+
+document.getElementById('close-settings-btn').addEventListener('click', () => {
+  settingsModal.style.display = 'none'
+})
+
+document.getElementById('browse-dir-btn').addEventListener('click', async () => {
+  const dir = await window.api.selectDirectory()
+  if (dir) storageInput.value = dir
+})
+
+document.getElementById('save-settings-btn').addEventListener('click', async () => {
+  const newDir = storageInput.value
+  if (!newDir) return
+  await window.api.setGlobalConfig({ storageDir: newDir })
+  settingsModal.style.display = 'none'
+  // 重载数据
+  allTags = await window.api.getTags()
+  renderTagList()
+  await loadMonths()
+  await loadMemos()
 })
 
 // ── 初始化 ────────────────────────────────────────────
