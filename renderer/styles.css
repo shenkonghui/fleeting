@@ -26,10 +26,39 @@ body {
   height: 100vh;
 }
 
+/* ── 活动栏 ── */
+#activity-bar {
+  width: 60px;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 40px 0 12px;
+  -webkit-app-region: drag;
+}
+
+.activity-item {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  color: var(--text-muted);
+  cursor: pointer;
+  margin-bottom: 12px;
+  -webkit-app-region: no-drag;
+  transition: background .15s, color .15s;
+}
+.activity-item:hover { background: var(--border); color: var(--text); }
+.activity-item.active { background: var(--accent-light); color: var(--accent); }
+
 /* ── 侧边栏 ── */
 #sidebar {
-  width: 200px;
-  min-width: 160px;
+  width: 180px;
+  min-width: 140px;
   background: var(--sidebar-bg);
   border-right: 1px solid var(--border);
   display: flex;
@@ -44,6 +73,7 @@ body {
   font-weight: 700;
   color: var(--accent);
   -webkit-app-region: drag;
+  display: none; /* Logo 已经放到活动栏，这里隐藏或者移除 */
 }
 
 #month-list {

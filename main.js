@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 const os = require('os')
 const yaml = require('js-yaml')
+const crypto = require('crypto')
 
 const GLOBAL_CONFIG_FILE = path.join(os.homedir(), '.fleeting.json')
 function getGlobalConfig() {
@@ -51,8 +52,12 @@ function formatTimestamp(date = new Date()) {
 }
 
 // 读取某个月的 memos
-ipcMain.handle('get-memos', (_, yearMonth) => {
+ipcMain.handle('get-memos', (_, { yearMonth, isPrivate } = {}) => {
   ensureDir()
+  if (isPrivate) {
+    const content = readPrivateContent()
+    return parseMemos(content)
+  }
   let file
   if (yearMonth) {
     file = path.join(STORAGE_DIR, `${yearMonth}.md`)
@@ -99,8 +104,15 @@ function syncTags(content) {
   saveConfig(cfg)
 }
 
-ipcMain.handle('get-tags', () => {
+ipcMain.handle('get-tags', (_, isPrivate) => {
   ensureDir()
+  if (isPrivate) {
+    const content = readPrivateContent()
+    const set = new Set()
+    ;(content.match(/#(\S+)/g) || []).forEach(t => set.add(t.slice(1)))
+    return [...set].sort()
+  }
+
   const cfg = readConfig()
   // 首次使用：扫描所有 md 文件补充标签
   if (!cfg.tags || cfg.tags.length === 0) {
@@ -119,18 +131,31 @@ ipcMain.handle('get-tags', () => {
 })
 
 // 添加新 memo
-ipcMain.handle('add-memo', (_, content) => {
+ipcMain.handle('add-memo', (_, { content, isPrivate } = {}) => {
   ensureDir()
-  const file = getMonthFile()
   const ts = formatTimestamp()
   const block = `## ${ts}\n${content}\n---\n`
-  fs.appendFileSync(file, block, 'utf-8')
-  syncTags(content)
+  if (isPrivate) {
+    const text = readPrivateContent()
+    writePrivateContent(text + block)
+  } else {
+    const file = getMonthFile()
+    fs.appendFileSync(file, block, 'utf-8')
+    syncTags(content)
+  }
   return { timestamp: ts, content }
 })
 
 // 删除 memo（按时间戳匹配）
-ipcMain.handle('delete-memo', (_, { yearMonth, timestamp }) => {
+ipcMain.handle('delete-memo', (_, { yearMonth, timestamp, isPrivate }) => {
+  if (isPrivate) {
+    const content = readPrivateContent()
+    const blocks = content.split(/\n---\n/)
+    const filtered = blocks.filter(b => !b.includes(`## ${timestamp}`))
+    writePrivateContent(filtered.join('\n---\n'))
+    return true
+  }
+
   const file = yearMonth
     ? path.join(STORAGE_DIR, `${yearMonth}.md`)
     : getMonthFile()
@@ -143,14 +168,27 @@ ipcMain.handle('delete-memo', (_, { yearMonth, timestamp }) => {
 })
 
 // 跨所有月份搜索（返回带 yearMonth 字段的 memo 列表）
-ipcMain.handle('search-memos', (_, query) => {
+ipcMain.handle('search-memos', (_, { query, isPrivate }) => {
   ensureDir()
-  const files = fs.readdirSync(STORAGE_DIR).filter(f => /^\d{4}-\d{2}\.md$/.test(f)).sort().reverse()
   const q = (query || '').toLowerCase()
   const tags = (q.match(/#\S+/g) || []).map(t => t.slice(1))        // ['tag1','tag2']
   const words = q.replace(/#\S+/g, '').trim().split(/\s+/).filter(Boolean) // 普通词
 
   const results = []
+
+  if (isPrivate) {
+    const content = readPrivateContent()
+    parseMemos(content).forEach(memo => {
+      const lower = memo.content.toLowerCase()
+      const memoTags = (memo.content.match(/#\S+/g) || []).map(t => t.slice(1).toLowerCase())
+      const tagMatch = tags.every(t => memoTags.includes(t))
+      const wordMatch = words.every(w => lower.includes(w))
+      if (tagMatch && wordMatch) results.push({ ...memo, yearMonth: '私密' })
+    })
+    return results
+  }
+
+  const files = fs.readdirSync(STORAGE_DIR).filter(f => /^\d{4}-\d{2}\.md$/.test(f)).sort().reverse()
   for (const file of files) {
     const ym = file.replace('.md', '')
     const content = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8')
@@ -166,26 +204,39 @@ ipcMain.handle('search-memos', (_, query) => {
 })
 
 // 编辑 memo（保存旧版本到历史记录）
-ipcMain.handle('edit-memo', (_, { yearMonth, timestamp, newContent }) => {
-  const file = yearMonth ? path.join(STORAGE_DIR, `${yearMonth}.md`) : getMonthFile()
-  if (!fs.existsSync(file)) return false
-  const text = fs.readFileSync(file, 'utf-8')
+ipcMain.handle('edit-memo', (_, { yearMonth, timestamp, newContent, isPrivate }) => {
+  let text = ''
+  let file = null
+  if (isPrivate) {
+    text = readPrivateContent()
+  } else {
+    file = yearMonth ? path.join(STORAGE_DIR, `${yearMonth}.md`) : getMonthFile()
+    if (!fs.existsSync(file)) return false
+    text = fs.readFileSync(file, 'utf-8')
+  }
+
   let oldContent = null
   const updated = text.split(/\n---\n/).map(b => {
     if (!b.includes(`## ${timestamp}`)) return b
     oldContent = b.trim().replace(/^## [^\n]+\n/, '').trim()
     return `## ${timestamp}\n${newContent}`
   })
-  if (oldContent !== null) {
+  
+  if (oldContent !== null && !isPrivate) {
     const cfg = readConfig()
     cfg.history = cfg.history || {}
     cfg.history[timestamp] = cfg.history[timestamp] || []
     cfg.history[timestamp].unshift({ editedAt: formatTimestamp(), content: oldContent })
     if (cfg.history[timestamp].length > 10) cfg.history[timestamp].pop()
     saveConfig(cfg)
+    syncTags(newContent)
   }
-  fs.writeFileSync(file, updated.join('\n---\n'), 'utf-8')
-  syncTags(newContent)
+
+  if (isPrivate) {
+    writePrivateContent(updated.join('\n---\n'))
+  } else {
+    fs.writeFileSync(file, updated.join('\n---\n'), 'utf-8')
+  }
   return true
 })
 
@@ -231,6 +282,69 @@ ipcMain.handle('save-image', (_, { data, ext }) => {
 
 // 打开存储目录
 ipcMain.handle('open-storage-dir', () => shell.openPath(STORAGE_DIR))
+
+// ── 私密记录：加密与解密逻辑 ────────────────────────────
+const ALGORITHM = 'aes-256-gcm'
+let privatePassword = null
+
+function encrypt(text, password) {
+  const key = crypto.scryptSync(password, 'salt', 32)
+  const iv = crypto.randomBytes(16)
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv)
+  let encrypted = cipher.update(text, 'utf8', 'hex')
+  encrypted += cipher.final('hex')
+  const authTag = cipher.getAuthTag().toString('hex')
+  return `${iv.toString('hex')}:${authTag}:${encrypted}`
+}
+
+function decrypt(text, password) {
+  const parts = text.split(':')
+  if (parts.length !== 3) throw new Error('Invalid encrypted format')
+  const iv = Buffer.from(parts[0], 'hex')
+  const authTag = Buffer.from(parts[1], 'hex')
+  const encryptedText = Buffer.from(parts[2], 'hex')
+  const key = crypto.scryptSync(password, 'salt', 32)
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv)
+  decipher.setAuthTag(authTag)
+  let decrypted = decipher.update(encryptedText, 'hex', 'utf8')
+  decrypted += decipher.final('utf8')
+  return decrypted
+}
+
+ipcMain.handle('verify-private-password', (_, pwd) => {
+  ensureDir()
+  const file = path.join(STORAGE_DIR, 'private.md')
+  if (!fs.existsSync(file)) {
+    privatePassword = pwd
+    fs.writeFileSync(file, encrypt('', pwd), 'utf-8')
+    return true
+  }
+  try {
+    const text = fs.readFileSync(file, 'utf-8')
+    if (text) decrypt(text, pwd)
+    privatePassword = pwd
+    return true
+  } catch (e) {
+    return false
+  }
+})
+
+function readPrivateContent() {
+  const file = path.join(STORAGE_DIR, 'private.md')
+  if (!fs.existsSync(file)) return ''
+  const text = fs.readFileSync(file, 'utf-8')
+  if (!text) return ''
+  try {
+    return decrypt(text, privatePassword)
+  } catch(e) {
+    return ''
+  }
+}
+
+function writePrivateContent(content) {
+  const file = path.join(STORAGE_DIR, 'private.md')
+  fs.writeFileSync(file, encrypt(content, privatePassword), 'utf-8')
+}
 
 function createWindow() {
   const win = new BrowserWindow({

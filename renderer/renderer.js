@@ -2,6 +2,8 @@ let currentMonth = null // 'YYYY-MM'，null = 当前月
 let searchQuery = ''   // 当前搜索词
 let allTags = []       // 从 config.yaml 加载的全量标签
 let activeTag = ''     // 当前侧边栏选中的标签
+let currentMode = 'public' // 'public' | 'private'
+let privateUnlocked = false
 
 // ── 工具 ──────────────────────────────────────────────
 function currentYearMonth() {
@@ -74,16 +76,22 @@ async function loadMemos() {
 
   if (searchQuery) {
     isSearch = true
-    memos = await window.api.searchMemos(searchQuery)
+    memos = await window.api.searchMemos({ query: searchQuery, isPrivate: currentMode === 'private' })
     document.getElementById('current-month-label').textContent = `🔍 搜索：${searchQuery}`
   } else {
     const ym = currentMonth || currentYearMonth()
-    memos = (await window.api.getMemos(currentMonth)).map(m => ({ ...m, yearMonth: ym }))
-    document.getElementById('current-month-label').textContent = `📅 ${ym}`
+    memos = await window.api.getMemos({ yearMonth: currentMonth, isPrivate: currentMode === 'private' })
+    if (currentMode === 'private') {
+      memos = memos.map(m => ({ ...m, yearMonth: '私密' }))
+      document.getElementById('current-month-label').textContent = `🔒 私密记录`
+    } else {
+      memos = memos.map(m => ({ ...m, yearMonth: ym }))
+      document.getElementById('current-month-label').textContent = `📅 ${ym}`
+    }
   }
 
   if (!memos.length) {
-    list.innerHTML = `<div class="empty-tip">${isSearch ? '没有找到匹配的备忘' : '这个月还没有备忘，开始写第一条吧～'}</div>`
+    list.innerHTML = `<div class="empty-tip">${isSearch ? '没有找到匹配的备忘' : '还没有记录，开始写第一条吧～'}</div>`
     return
   }
   list.innerHTML = ''
@@ -106,13 +114,16 @@ function createCard(memo, ym) {
   `
   card.querySelector('.memo-delete').addEventListener('click', async () => {
     if (!confirm('确定删除这条备忘？')) return
-    await window.api.deleteMemo({ yearMonth: ym, timestamp: memo.timestamp })
+    await window.api.deleteMemo({ yearMonth: ym, timestamp: memo.timestamp, isPrivate: currentMode === 'private' })
     await loadMemos()
-    await loadMonths()
+    if (currentMode !== 'private') await loadMonths()
   })
   card.querySelector('.memo-edit').addEventListener('click', async () => {
     const body = card.querySelector('.memo-body')
-    const histories = await window.api.getHistory(memo.timestamp)
+    let histories = []
+    if (currentMode !== 'private') {
+      histories = await window.api.getHistory(memo.timestamp)
+    }
     const histHtml = histories.length
       ? `<div class="edit-history"><div class="history-title">编辑历史</div>${histories.map(h =>
           `<div class="history-item"><span class="history-time">${h.editedAt}</span><pre>${h.content}</pre></div>`
@@ -127,7 +138,7 @@ function createCard(memo, ym) {
     body.querySelector('.edit-save').addEventListener('click', async () => {
       const newContent = body.querySelector('.edit-textarea').value.trim()
       if (!newContent) return
-      await window.api.editMemo({ yearMonth: ym, timestamp: memo.timestamp, newContent })
+      await window.api.editMemo({ yearMonth: ym, timestamp: memo.timestamp, newContent, isPrivate: currentMode === 'private' })
       await loadMemos()
     })
     body.querySelector('.edit-cancel').addEventListener('click', () => {
@@ -136,6 +147,70 @@ function createCard(memo, ym) {
   })
   return card
 }
+
+// ── 切换模式 (公共/私密) ───────────────────────────────
+document.getElementById('mode-public').addEventListener('click', () => switchMode('public'))
+document.getElementById('mode-private').addEventListener('click', () => switchMode('private'))
+
+async function switchMode(mode) {
+  if (mode === currentMode) return
+  if (mode === 'private' && !privateUnlocked) {
+    const pwdModal = document.getElementById('password-modal')
+    pwdModal.style.display = 'flex'
+    const input = document.getElementById('private-pwd-input')
+    input.value = ''
+    input.focus()
+    return
+  }
+  
+  currentMode = mode
+  document.getElementById('mode-public').classList.toggle('active', mode === 'public')
+  document.getElementById('mode-private').classList.toggle('active', mode === 'private')
+  
+  if (mode === 'private') {
+    document.getElementById('month-list').style.display = 'none'
+    document.querySelector('.sidebar-section-label').style.display = 'none'
+  } else {
+    document.getElementById('month-list').style.display = 'block'
+    document.querySelector('.sidebar-section-label').style.display = 'block'
+  }
+  
+  activeTag = ''
+  searchQuery = ''
+  document.getElementById('search-input').value = ''
+  document.getElementById('search-clear').style.display = 'none'
+  currentMonth = null
+  
+  allTags = await window.api.getTags(mode === 'private')
+  renderTagList()
+  
+  if (mode === 'public') {
+    await loadMonths()
+  }
+  await loadMemos()
+}
+
+document.getElementById('confirm-pwd-btn').addEventListener('click', async () => {
+  const pwd = document.getElementById('private-pwd-input').value
+  if (!pwd) return
+  const ok = await window.api.verifyPrivatePassword(pwd)
+  if (ok) {
+    privateUnlocked = true
+    document.getElementById('password-modal').style.display = 'none'
+    switchMode('private')
+  } else {
+    alert('密码错误！')
+  }
+})
+document.getElementById('cancel-pwd-btn').addEventListener('click', () => {
+  document.getElementById('password-modal').style.display = 'none'
+})
+
+document.getElementById('private-pwd-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    document.getElementById('confirm-pwd-btn').click()
+  }
+})
 
 // ── 切换月份 ───────────────────────────────────────────
 async function switchMonth(m) {
@@ -157,13 +232,13 @@ async function submitMemo() {
 
   hideTagDropdown()
   currentMonth = null
-  await window.api.addMemo(content)
+  await window.api.addMemo({ content, isPrivate: currentMode === 'private' })
   // 发送后重新加载标签（可能新增了标签）
-  allTags = await window.api.getTags()
+  allTags = await window.api.getTags(currentMode === 'private')
   renderTagList()
   editor.value = ''
   editor.style.height = 'auto'
-  await loadMonths()
+  if (currentMode !== 'private') await loadMonths()
   await loadMemos()
 }
 
@@ -342,15 +417,15 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
   await window.api.setGlobalConfig({ storageDir: newDir })
   settingsModal.style.display = 'none'
   // 重载数据
-  allTags = await window.api.getTags()
+  allTags = await window.api.getTags(currentMode === 'private')
   renderTagList()
-  await loadMonths()
+  if (currentMode === 'public') await loadMonths()
   await loadMemos()
 })
 
 // ── 初始化 ────────────────────────────────────────────
 ;(async () => {
-  allTags = await window.api.getTags()
+  allTags = await window.api.getTags(currentMode === 'private')
   renderTagList()
   await loadMonths()
   await loadMemos()
