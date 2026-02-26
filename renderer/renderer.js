@@ -12,10 +12,12 @@ function currentYearMonth() {
 }
 
 // 将内容中的 #tag 替换为带样式的 badge，再 parse markdown
+// 行首 "# 纯数字" 转义为普通文本，避免被解析成标题导致加粗
 function renderMarkdown(text) {
-  const withTags = text.replace(/(^|\s)(#\S+)/g, (_, pre, tag) =>
+  let s = text.replace(/^# (\d+)\s*$/gm, '\\# $1')
+  s = s.replace(/(^|\s)(#\S+)/g, (_, pre, tag) =>
     `${pre}<span class="tag-badge">${tag}</span>`)
-  return marked.parse(withTags)
+  return marked.parse(s)
 }
 
 // ── 渲染侧边栏标签列表 ─────────────────────────────────
@@ -396,10 +398,55 @@ document.getElementById('memo-list').addEventListener('click', e => {
 const settingsModal = document.getElementById('settings-modal')
 const storageInput = document.getElementById('storage-dir-input')
 
+async function renderBackupList() {
+  const list = await window.api.listBackups()
+  const el = document.getElementById('backup-list')
+  if (!list.length) {
+    el.innerHTML = '<div style="padding:12px;text-align:center;color:var(--text-muted);font-size:13px;">暂无备份</div>'
+    return
+  }
+  el.innerHTML = list.map(b => `
+    <div class="backup-item">
+      <span>${b.label}</span>
+      <div class="backup-actions">
+        <button data-id="${b.id}" data-action="restore">恢复</button>
+        <button data-id="${b.id}" data-action="delete">删除</button>
+      </div>
+    </div>`).join('')
+  el.querySelectorAll('button[data-id]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (btn.dataset.action === 'delete') {
+        if (!confirm(`确定删除备份 ${btn.dataset.id}？`)) return
+        await window.api.deleteBackup(btn.dataset.id)
+        await renderBackupList()
+        return
+      }
+      if (!confirm(`确定恢复到备份 ${btn.dataset.id}？当前数据将被覆盖。`)) return
+      await window.api.restoreBackup(btn.dataset.id)
+      settingsModal.style.display = 'none'
+      allTags = await window.api.getTags(currentMode === 'private')
+      renderTagList()
+      if (currentMode === 'public') await loadMonths()
+      await loadMemos()
+      alert('恢复成功！')
+    })
+  })
+}
+
 document.getElementById('settings-btn').addEventListener('click', async () => {
   const config = await window.api.getGlobalConfig()
   storageInput.value = config.storageDir
+  const bk = await window.api.getBackupConfig()
+  document.getElementById('backup-interval-input').value = bk.backupInterval
+  document.getElementById('backup-unit-select').value = bk.backupUnit || 'hour'
+  document.getElementById('backup-keep-input').value = bk.backupKeep
+  await renderBackupList()
   settingsModal.style.display = 'flex'
+})
+
+document.getElementById('backup-now-btn').addEventListener('click', async () => {
+  await window.api.runBackupNow()
+  await renderBackupList()
 })
 
 document.getElementById('close-settings-btn').addEventListener('click', () => {
@@ -415,6 +462,14 @@ document.getElementById('save-settings-btn').addEventListener('click', async () 
   const newDir = storageInput.value
   if (!newDir) return
   await window.api.setGlobalConfig({ storageDir: newDir })
+  const interval = parseInt(document.getElementById('backup-interval-input').value, 10)
+  const keep = parseInt(document.getElementById('backup-keep-input').value, 10)
+  const unit = document.getElementById('backup-unit-select').value || 'hour'
+  await window.api.setBackupConfig({
+    backupInterval: isNaN(interval) ? 24 : Math.max(0, interval),
+    backupKeep: isNaN(keep) ? 5 : Math.max(1, keep),
+    backupUnit: unit
+  })
   settingsModal.style.display = 'none'
   // 重载数据
   allTags = await window.api.getTags(currentMode === 'private')

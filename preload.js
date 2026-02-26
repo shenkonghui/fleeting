@@ -15,4 +15,10 @@ contextBridge.exposeInMainWorld('api', {
   setGlobalConfig:(cfg)       => ipcRenderer.invoke('set-global-config', cfg),
   selectDirectory:()          => ipcRenderer.invoke('select-directory'),
   verifyPrivatePassword: (pwd) => ipcRenderer.invoke('verify-private-password', pwd),
+  getBackupConfig:()          => ipcRenderer.invoke('get-backup-config'),
+  setBackupConfig:(cfg)       => ipcRenderer.invoke('set-backup-config', cfg),
+  listBackups:()              => ipcRenderer.invoke('list-backups'),
+  runBackupNow:()             => ipcRenderer.invoke('run-backup-now'),
+  deleteBackup:(id)           => ipcRenderer.invoke('delete-backup', id),
+  restoreBackup:(id)          => ipcRenderer.invoke('restore-backup', id),
 })

@@ -30,9 +30,9 @@ function getMonthFile(date = new Date()) {
   return path.join(STORAGE_DIR, `${y}-${m}.md`)
 }
 
-// 解析 markdown 文件中的 memos，每条以 ## YYYY-MM-DD HH:MM:SS 开头，---分隔
+// 解析 markdown 文件中的 memos，每条以 ## YYYY-MM-DD HH:MM:SS 开头（按标题分割，内容中的 --- 不会误伤）
 function parseMemos(content) {
-  const blocks = content.split(/\n---\n/)
+  const blocks = content.split(/\n(?=## \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\n)/)
   const memos = []
   const re = /^## (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\n([\s\S]*)$/
   for (const block of blocks) {
@@ -40,10 +40,17 @@ function parseMemos(content) {
     if (!trimmed) continue
     const m = trimmed.match(re)
     if (m) {
-      memos.push({ timestamp: m[1], content: m[2].trim() })
+      // 去掉块尾的 --- 分隔符，避免被当成内容存进去导致写回时越积越多
+      let body = m[2].trim().replace(/(\n---)+\s*$/, '')
+      memos.push({ timestamp: m[1], content: body })
     }
   }
   return memos.reverse() // 最新在前
+}
+
+// 序列化 memos 回文件内容（写回时仍用 --- 分隔，但解析不依赖 ---）
+function serializeMemos(memos) {
+  return memos.map(m => `## ${m.timestamp}\n${m.content}\n---\n`).join('')
 }
 
 function formatTimestamp(date = new Date()) {
@@ -113,21 +120,18 @@ ipcMain.handle('get-tags', (_, isPrivate) => {
     return [...set].sort()
   }
 
-  const cfg = readConfig()
-  // 首次使用：扫描所有 md 文件补充标签
-  if (!cfg.tags || cfg.tags.length === 0) {
-    const files = fs.readdirSync(STORAGE_DIR).filter(f => /^\d{4}-\d{2}\.md$/.test(f))
-    const set = new Set()
-    for (const file of files) {
-      const content = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8')
-      ;(content.match(/#(\S+)/g) || []).forEach(t => set.add(t.slice(1)))
-    }
-    if (set.size > 0) {
-      cfg.tags = [...set].sort()
-      saveConfig(cfg)
-    }
+  // 每次从当前所有 memo 内容重算标签，已删除记录对应的标签会被移除
+  const files = fs.readdirSync(STORAGE_DIR).filter(f => /^\d{4}-\d{2}\.md$/.test(f))
+  const set = new Set()
+  for (const file of files) {
+    const content = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8')
+    ;(content.match(/#(\S+)/g) || []).forEach(t => set.add(t.slice(1)))
   }
-  return cfg.tags || []
+  const tags = [...set].sort()
+  const cfg = readConfig()
+  cfg.tags = tags
+  saveConfig(cfg)
+  return tags
 })
 
 // 添加新 memo
@@ -149,10 +153,8 @@ ipcMain.handle('add-memo', (_, { content, isPrivate } = {}) => {
 // 删除 memo（按时间戳匹配）
 ipcMain.handle('delete-memo', (_, { yearMonth, timestamp, isPrivate }) => {
   if (isPrivate) {
-    const content = readPrivateContent()
-    const blocks = content.split(/\n---\n/)
-    const filtered = blocks.filter(b => !b.includes(`## ${timestamp}`))
-    writePrivateContent(filtered.join('\n---\n'))
+    const memos = parseMemos(readPrivateContent()).filter(m => m.timestamp !== timestamp)
+    writePrivateContent(serializeMemos(memos.slice().reverse()))
     return true
   }
 
@@ -160,10 +162,8 @@ ipcMain.handle('delete-memo', (_, { yearMonth, timestamp, isPrivate }) => {
     ? path.join(STORAGE_DIR, `${yearMonth}.md`)
     : getMonthFile()
   if (!fs.existsSync(file)) return false
-  const content = fs.readFileSync(file, 'utf-8')
-  const blocks = content.split(/\n---\n/)
-  const filtered = blocks.filter(b => !b.includes(`## ${timestamp}`))
-  fs.writeFileSync(file, filtered.join('\n---\n'), 'utf-8')
+  const memos = parseMemos(fs.readFileSync(file, 'utf-8')).filter(m => m.timestamp !== timestamp)
+  fs.writeFileSync(file, serializeMemos(memos.slice().reverse()), 'utf-8')
   return true
 })
 
@@ -215,14 +215,13 @@ ipcMain.handle('edit-memo', (_, { yearMonth, timestamp, newContent, isPrivate })
     text = fs.readFileSync(file, 'utf-8')
   }
 
-  let oldContent = null
-  const updated = text.split(/\n---\n/).map(b => {
-    if (!b.includes(`## ${timestamp}`)) return b
-    oldContent = b.trim().replace(/^## [^\n]+\n/, '').trim()
-    return `## ${timestamp}\n${newContent}`
-  })
-  
-  if (oldContent !== null && !isPrivate) {
+  const memos = parseMemos(text)
+  const idx = memos.findIndex(m => m.timestamp === timestamp)
+  if (idx === -1) return false
+  const oldContent = memos[idx].content
+  memos[idx].content = newContent
+
+  if (!isPrivate) {
     const cfg = readConfig()
     cfg.history = cfg.history || {}
     cfg.history[timestamp] = cfg.history[timestamp] || []
@@ -232,11 +231,9 @@ ipcMain.handle('edit-memo', (_, { yearMonth, timestamp, newContent, isPrivate })
     syncTags(newContent)
   }
 
-  if (isPrivate) {
-    writePrivateContent(updated.join('\n---\n'))
-  } else {
-    fs.writeFileSync(file, updated.join('\n---\n'), 'utf-8')
-  }
+  const out = serializeMemos(memos.slice().reverse())
+  if (isPrivate) writePrivateContent(out)
+  else fs.writeFileSync(file, out, 'utf-8')
   return true
 })
 
@@ -346,6 +343,94 @@ function writePrivateContent(content) {
   fs.writeFileSync(file, encrypt(content, privatePassword), 'utf-8')
 }
 
+// ── 数据备份 ────────────────────────────────────────────
+function getBackupDir() { return path.join(STORAGE_DIR, '.backup') }
+
+function doBackup() {
+  ensureDir()
+  const backupDir = getBackupDir()
+  if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true })
+  const name = formatTimestamp().replace(/[: ]/g, '-')
+  const dest = path.join(backupDir, name)
+  fs.mkdirSync(dest, { recursive: true })
+  for (const f of fs.readdirSync(STORAGE_DIR)) {
+    if (f === '.backup') continue
+    fs.cpSync(path.join(STORAGE_DIR, f), path.join(dest, f), { recursive: true })
+  }
+  // 清理超量旧备份
+  const cfg = getGlobalConfig()
+  const keep = Math.max(1, cfg.backupKeep || 5)
+  const list = fs.readdirSync(backupDir).filter(f =>
+    fs.statSync(path.join(backupDir, f)).isDirectory()
+  ).sort()
+  while (list.length > keep) {
+    fs.rmSync(path.join(backupDir, list.shift()), { recursive: true, force: true })
+  }
+}
+
+let backupTimer = null
+function scheduleBackup() {
+  if (backupTimer) clearInterval(backupTimer)
+  const cfg = getGlobalConfig()
+  const interval = cfg.backupInterval ?? 24
+  const unit = cfg.backupUnit || 'hour'
+  const hours = unit === 'day' ? interval * 24 : interval
+  if (hours > 0) backupTimer = setInterval(doBackup, hours * 3600 * 1000)
+}
+
+ipcMain.handle('get-backup-config', () => {
+  const cfg = getGlobalConfig()
+  return {
+    backupInterval: cfg.backupInterval ?? 24,
+    backupKeep: cfg.backupKeep ?? 5,
+    backupUnit: cfg.backupUnit || 'hour'
+  }
+})
+
+ipcMain.handle('set-backup-config', (_, { backupInterval, backupKeep, backupUnit }) => {
+  const cfg = getGlobalConfig()
+  cfg.backupInterval = backupInterval
+  cfg.backupKeep = backupKeep
+  if (backupUnit) cfg.backupUnit = backupUnit
+  saveGlobalConfig(cfg)
+  scheduleBackup()
+  return true
+})
+
+ipcMain.handle('list-backups', () => {
+  const backupDir = getBackupDir()
+  if (!fs.existsSync(backupDir)) return []
+  return fs.readdirSync(backupDir)
+    .filter(f => fs.statSync(path.join(backupDir, f)).isDirectory())
+    .sort().reverse()
+    .map(id => ({
+      id,
+      label: id.replace(/^(\d{4}-\d{2}-\d{2})-(\d{2})-(\d{2})-(\d{2})$/, '$1 $2:$3:$4')
+    }))
+})
+
+ipcMain.handle('run-backup-now', () => { doBackup(); return true })
+
+ipcMain.handle('delete-backup', (_, id) => {
+  const target = path.join(getBackupDir(), id)
+  if (!fs.existsSync(target)) return false
+  fs.rmSync(target, { recursive: true, force: true })
+  return true
+})
+
+ipcMain.handle('restore-backup', (_, id) => {
+  const src = path.join(getBackupDir(), id)
+  if (!fs.existsSync(src)) return false
+  for (const f of fs.readdirSync(STORAGE_DIR)) {
+    if (f === '.backup') continue
+    fs.rmSync(path.join(STORAGE_DIR, f), { recursive: true, force: true })
+  }
+  for (const f of fs.readdirSync(src)) {
+    fs.cpSync(path.join(src, f), path.join(STORAGE_DIR, f), { recursive: true })
+  }
+  return true
+})
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 900,
@@ -361,6 +446,6 @@ function createWindow() {
   win.loadFile('renderer/index.html')
 }
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => { createWindow(); scheduleBackup() })
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit() })
 app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow() })

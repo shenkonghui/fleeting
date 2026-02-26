@@ -76,7 +76,7 @@
 
     <!-- 设置弹窗 -->
     <div id="settings-modal" class="modal-overlay" style="display:none;">
-      <div class="modal-content">
+      <div class="modal-content" style="width:480px;max-height:80vh;overflow-y:auto;">
         <h3>设置</h3>
         <div class="setting-item">
           <label>数据存储目录</label>
@@ -85,6 +85,31 @@
             <button id="browse-dir-btn">浏览...</button>
           </div>
           <p class="setting-desc">支持配置为 iCloud 目录实现多端同步，数据完全本地化。</p>
+        </div>
+        <div class="setting-item">
+          <label>自动备份</label>
+          <div class="input-group">
+            <span class="setting-inline-label">每</span>
+            <input type="number" id="backup-interval-input" min="0" style="width:70px;" />
+            <select id="backup-unit-select" style="width:56px;padding:6px 4px;border-radius:6px;border:1px solid var(--border);font-size:13px;">
+              <option value="hour">小时</option>
+              <option value="day">天</option>
+            </select>
+            <span class="setting-inline-label">备份一次（0 = 关闭）</span>
+          </div>
+          <div class="input-group" style="margin-top:8px;">
+            <span class="setting-inline-label">保留最近</span>
+            <input type="number" id="backup-keep-input" min="1" style="width:70px;" />
+            <span class="setting-inline-label">次备份</span>
+          </div>
+          <p class="setting-desc">备份文件保存在存储目录下的 .backup 文件夹中。</p>
+        </div>
+        <div class="setting-item">
+          <label style="display:flex;align-items:center;justify-content:space-between;">
+            备份历史
+            <button id="backup-now-btn" class="btn-secondary" style="font-size:12px;padding:3px 10px;">立即备份</button>
+          </label>
+          <div id="backup-list" style="max-height:180px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;"></div>
         </div>
         <div class="modal-actions">
           <button id="close-settings-btn" class="btn-cancel">取消</button>
