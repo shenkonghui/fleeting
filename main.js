@@ -346,8 +346,41 @@ function writePrivateContent(content) {
 // ── 数据备份 ────────────────────────────────────────────
 function getBackupDir() { return path.join(STORAGE_DIR, '.backup') }
 
+function getDataSnapshotHash() {
+  ensureDir()
+  const md5 = crypto.createHash('md5')
+  const files = []
+
+  function walk(dir) {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name)
+      const rel = path.relative(STORAGE_DIR, full)
+      if (rel === '.backup' || rel.startsWith(`.backup${path.sep}`)) continue
+      if (entry.isDirectory()) walk(full)
+      else if (entry.isFile()) files.push(full)
+    }
+  }
+
+  walk(STORAGE_DIR)
+  files.sort()
+  for (const file of files) {
+    const rel = path.relative(STORAGE_DIR, file)
+    md5.update(rel)
+    md5.update('\0')
+    md5.update(fs.readFileSync(file))
+    md5.update('\0')
+  }
+  return md5.digest('hex')
+}
+
 function doBackup() {
   ensureDir()
+  const cfg = getGlobalConfig()
+  const currentHash = getDataSnapshotHash()
+  if (cfg.lastBackupHash && cfg.lastBackupHash === currentHash) return false
+
   const backupDir = getBackupDir()
   if (!fs.existsSync(backupDir)) fs.mkdirSync(backupDir, { recursive: true })
   const name = formatTimestamp().replace(/[: ]/g, '-')
@@ -358,7 +391,6 @@ function doBackup() {
     fs.cpSync(path.join(STORAGE_DIR, f), path.join(dest, f), { recursive: true })
   }
   // 清理超量旧备份
-  const cfg = getGlobalConfig()
   const keep = Math.max(1, cfg.backupKeep || 5)
   const list = fs.readdirSync(backupDir).filter(f =>
     fs.statSync(path.join(backupDir, f)).isDirectory()
@@ -366,6 +398,9 @@ function doBackup() {
   while (list.length > keep) {
     fs.rmSync(path.join(backupDir, list.shift()), { recursive: true, force: true })
   }
+  cfg.lastBackupHash = currentHash
+  saveGlobalConfig(cfg)
+  return true
 }
 
 let backupTimer = null
@@ -409,7 +444,7 @@ ipcMain.handle('list-backups', () => {
     }))
 })
 
-ipcMain.handle('run-backup-now', () => { doBackup(); return true })
+ipcMain.handle('run-backup-now', () => doBackup())
 
 ipcMain.handle('delete-backup', (_, id) => {
   const target = path.join(getBackupDir(), id)
