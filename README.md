@@ -24,6 +24,18 @@ make run
 make install
 ```
 
+## 发布（GitHub Actions 自动打包）
+
+本项目已配置 GitHub Actions：当你推送形如 `v*` 的 tag（例如 `v1.0.1`）时，会在 macOS Runner 上执行 `npm run build`，并自动创建 GitHub Release，上传 `dist/*.dmg` 作为附件。
+
+```bash
+# 例：发布 v1.0.1（建议 tag 与 package.json 版本保持一致）
+git tag v1.0.1
+git push --tags
+```
+
+注意：`electron-builder` 的图标文件来自 `build/icon.png` 与 `build/icon.icns`，请确保它们已提交到仓库，否则 CI 打包会失败。
+
 ## 数据存储
 
 所有数据保存在 `~/Documents/fleeting/`：

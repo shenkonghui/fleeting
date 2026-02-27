@@ -10,8 +10,10 @@
   "build": {
     "appId": "com.fleeting.app",
     "productName": "Fleeting",
+    "icon": "build/icon.png",
     "mac": {
       "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
       "target": "dmg"
     },
     "files": [
