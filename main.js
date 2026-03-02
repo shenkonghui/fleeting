@@ -40,17 +40,17 @@ function parseMemos(content) {
     if (!trimmed) continue
     const m = trimmed.match(re)
     if (m) {
-      // 去掉块尾的 --- 分隔符，避免被当成内容存进去导致写回时越积越多
-      let body = m[2].trim().replace(/(\n---)+\s*$/, '')
+      // 去掉块尾的分隔符（仅剥 ---**---，--- 属于用户内容保留）
+      let body = m[2].trim().replace(/(\n---\*\*---)+\s*$/, '')
       memos.push({ timestamp: m[1], content: body })
     }
   }
   return memos.reverse() // 最新在前
 }
 
-// 序列化 memos 回文件内容（写回时仍用 --- 分隔，但解析不依赖 ---）
+// 序列化 memos 回文件内容（写回时用 ---**--- 分隔，但解析不依赖分隔符）
 function serializeMemos(memos) {
-  return memos.map(m => `## ${m.timestamp}\n${m.content}\n---\n`).join('')
+  return memos.map(m => `## ${m.timestamp}\n${m.content}\n---**---\n`).join('')
 }
 
 function formatTimestamp(date = new Date()) {
@@ -102,7 +102,7 @@ function saveConfig(cfg) {
 }
 
 function syncTags(content) {
-  const found = (content.match(/#(\S+)/g) || []).map(t => t.slice(1))
+  const found = (content.match(/#([^#\s]\S*)/g) || []).map(t => t.slice(1))
   if (!found.length) return
   const cfg = readConfig()
   const set = new Set(cfg.tags || [])
@@ -116,7 +116,7 @@ ipcMain.handle('get-tags', (_, isPrivate) => {
   if (isPrivate) {
     const content = readPrivateContent()
     const set = new Set()
-    ;(content.match(/#(\S+)/g) || []).forEach(t => set.add(t.slice(1)))
+    ;(content.match(/#([^#\s]\S*)/g) || []).forEach(t => set.add(t.slice(1)))
     return [...set].sort()
   }
 
@@ -125,7 +125,7 @@ ipcMain.handle('get-tags', (_, isPrivate) => {
   const set = new Set()
   for (const file of files) {
     const content = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8')
-    ;(content.match(/#(\S+)/g) || []).forEach(t => set.add(t.slice(1)))
+    ;(content.match(/#([^#\s]\S*)/g) || []).forEach(t => set.add(t.slice(1)))
   }
   const tags = [...set].sort()
   const cfg = readConfig()
@@ -138,7 +138,7 @@ ipcMain.handle('get-tags', (_, isPrivate) => {
 ipcMain.handle('add-memo', (_, { content, isPrivate } = {}) => {
   ensureDir()
   const ts = formatTimestamp()
-  const block = `## ${ts}\n${content}\n---\n`
+  const block = `## ${ts}\n${content}\n---**---\n`
   if (isPrivate) {
     const text = readPrivateContent()
     writePrivateContent(text + block)
@@ -171,8 +171,8 @@ ipcMain.handle('delete-memo', (_, { yearMonth, timestamp, isPrivate }) => {
 ipcMain.handle('search-memos', (_, { query, isPrivate }) => {
   ensureDir()
   const q = (query || '').toLowerCase()
-  const tags = (q.match(/#\S+/g) || []).map(t => t.slice(1))        // ['tag1','tag2']
-  const words = q.replace(/#\S+/g, '').trim().split(/\s+/).filter(Boolean) // 普通词
+  const tags = (q.match(/#[^#\s]\S*/g) || []).map(t => t.slice(1))        // ['tag1','tag2']
+  const words = q.replace(/#[^#\s]\S*/g, '').trim().split(/\s+/).filter(Boolean) // 普通词
 
   const results = []
 
@@ -180,7 +180,7 @@ ipcMain.handle('search-memos', (_, { query, isPrivate }) => {
     const content = readPrivateContent()
     parseMemos(content).forEach(memo => {
       const lower = memo.content.toLowerCase()
-      const memoTags = (memo.content.match(/#\S+/g) || []).map(t => t.slice(1).toLowerCase())
+      const memoTags = (memo.content.match(/#[^#\s]\S*/g) || []).map(t => t.slice(1).toLowerCase())
       const tagMatch = tags.every(t => memoTags.includes(t))
       const wordMatch = words.every(w => lower.includes(w))
       if (tagMatch && wordMatch) results.push({ ...memo, yearMonth: '私密' })
@@ -194,7 +194,7 @@ ipcMain.handle('search-memos', (_, { query, isPrivate }) => {
     const content = fs.readFileSync(path.join(STORAGE_DIR, file), 'utf-8')
     parseMemos(content).forEach(memo => {
       const lower = memo.content.toLowerCase()
-      const memoTags = (memo.content.match(/#\S+/g) || []).map(t => t.slice(1).toLowerCase())
+      const memoTags = (memo.content.match(/#[^#\s]\S*/g) || []).map(t => t.slice(1).toLowerCase())
       const tagMatch = tags.every(t => memoTags.includes(t))
       const wordMatch = words.every(w => lower.includes(w))
       if (tagMatch && wordMatch) results.push({ ...memo, yearMonth: ym })

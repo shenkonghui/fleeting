@@ -15,7 +15,9 @@ function currentYearMonth() {
 // 行首 "# 纯数字" 转义为普通文本，避免被解析成标题导致加粗
 function renderMarkdown(text) {
   let s = text.replace(/^# (\d+)\s*$/gm, '\\# $1')
-  s = s.replace(/(^|\s)(#\S+)/g, (_, pre, tag) =>
+  // 防止 text\n--- 被解析为 setext 标题，插入空行使 --- 变回水平线
+  s = s.replace(/(\S)\n(-{3,}\s*(\n|$))/g, '$1\n\n$2')
+  s = s.replace(/(^|\s)(#(?!#)\S+)/g, (_, pre, tag) =>
     `${pre}<span class="tag-badge">${tag}</span>`)
   return marked.parse(s)
 }
@@ -33,6 +35,11 @@ function renderTagList() {
     item.addEventListener('click', () => filterByTag(tag))
     nav.appendChild(item)
   })
+  const noTagItem = document.createElement('div')
+  noTagItem.className = 'tag-item' + (activeTag === '__no_tag__' ? ' active' : '')
+  noTagItem.textContent = '无标签'
+  noTagItem.addEventListener('click', () => filterByTag('__no_tag__'))
+  nav.appendChild(noTagItem)
 }
 
 function filterByTag(tag) {
@@ -44,9 +51,15 @@ function filterByTag(tag) {
     document.getElementById('search-clear').style.display = 'none'
   } else {
     activeTag = tag
-    searchQuery = `#${tag}`
-    document.getElementById('search-input').value = `#${tag}`
-    document.getElementById('search-clear').style.display = 'flex'
+    if (tag === '__no_tag__') {
+      searchQuery = ''
+      document.getElementById('search-input').value = ''
+      document.getElementById('search-clear').style.display = 'none'
+    } else {
+      searchQuery = `#${tag}`
+      document.getElementById('search-input').value = `#${tag}`
+      document.getElementById('search-clear').style.display = 'flex'
+    }
   }
   renderTagList()
   loadMemos()
@@ -76,7 +89,12 @@ async function loadMemos() {
   const list = document.getElementById('memo-list')
   let memos, isSearch = false
 
-  if (searchQuery) {
+  if (activeTag === '__no_tag__') {
+    isSearch = true
+    const all = await window.api.searchMemos({ query: '', isPrivate: currentMode === 'private' })
+    memos = all.filter(m => !/#\S+/.test(m.content))
+    document.getElementById('current-month-label').textContent = `🔍 无标签`
+  } else if (searchQuery) {
     isSearch = true
     memos = await window.api.searchMemos({ query: searchQuery, isPrivate: currentMode === 'private' })
     document.getElementById('current-month-label').textContent = `🔍 搜索：${searchQuery}`
